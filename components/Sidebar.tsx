@@ -1,0 +1,205 @@
+
+import React, { useState } from 'react';
+import type { Mode, SelectableItem, SelectedItemType, SelectedLibraryItemType, Documentation, Feature, Page, DatabaseTable } from '../types';
+import { db } from '../db';
+import { ChevronRightIcon, PlusIcon, BoltIcon } from './Icons';
+
+interface SidebarProps {
+  isMobile?: boolean;
+  mode: Mode;
+  setMode: (mode: Mode) => void;
+  selectedItem: SelectableItem | null;
+  selectedType: SelectedItemType | null;
+  onSelectItem: (item: SelectableItem, type: SelectedItemType) => void;
+  selectedLibraryItem: SelectedLibraryItemType;
+  selectedDoc: Documentation | null;
+  onSelectLibraryItem: (type: SelectedLibraryItemType, doc?: Documentation) => void;
+  features: Feature[];
+  pages: Page[];
+  database: DatabaseTable[];
+  documentation: Documentation[];
+  onBuildProject: () => void;
+  isBuilding: boolean;
+}
+
+const getStatusColor = (status: string) => {
+    const colors: { [key: string]: string } = { 'complete': 'bg-green-500', 'in-progress': 'bg-yellow-500', 'pending': 'bg-blue-500' };
+    return colors[status] || 'bg-gray-500';
+};
+
+const Section: React.FC<{title: string; count: number; onAdd: () => void; children: React.ReactNode;}> = ({ title, count, onAdd, children }) => {
+    const [isExpanded, setIsExpanded] = useState(true);
+    
+    return (
+        <div className="mb-3">
+            <div className="flex items-center justify-between px-2 py-1 mb-1">
+                <div className="flex items-center space-x-2">
+                    <button onClick={() => setIsExpanded(!isExpanded)} className="text-text-tertiary hover:text-text-primary transition-colors duration-200">
+                        <ChevronRightIcon className={`w-4 h-4 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
+                    </button>
+                    <span className="text-xs font-semibold text-text-tertiary uppercase tracking-wider">{title}</span>
+                    <span className="text-xs text-text-muted">({count})</span>
+                </div>
+                <button onClick={onAdd} className="text-primary-400 hover:text-primary-300 transition-colors duration-200">
+                    <PlusIcon className="w-4 h-4" />
+                </button>
+            </div>
+            {isExpanded && <div className="space-y-0.5 animate-slide-down ml-6">{children}</div>}
+        </div>
+    );
+};
+
+export const Sidebar: React.FC<SidebarProps> = ({ isMobile = false, mode, setMode, selectedItem, selectedType, onSelectItem, selectedLibraryItem, selectedDoc, onSelectLibraryItem, features, pages, database, documentation, onBuildProject, isBuilding }) => {
+  
+  const handleAddItem = async (type: 'feature' | 'page' | 'database' | 'doc') => {
+    const name = prompt(`Enter a name for the new ${type}:`);
+    if (!name || !name.trim()) return;
+
+    try {
+        const newId = Date.now();
+        let fileId: string;
+        let fileContent: string;
+
+        switch(type) {
+            case 'feature':
+                const newFeature: Feature = { id: newId, name, status: 'pending', priority: 'Medium', complexity: 'Medium', description: 'A new feature.', requirements: [], dependencies: [] };
+                fileId = `features/${newId}`;
+                fileContent = JSON.stringify(newFeature);
+                break;
+            case 'page':
+                const newPage: Page = { id: newId, name, features: [], database: [] };
+                fileId = `pages/${newId}`;
+                fileContent = JSON.stringify(newPage);
+                break;
+            case 'database':
+                const newTable: DatabaseTable = { id: newId, name, fields: '0' };
+                fileId = `database/${newId}`;
+                fileContent = JSON.stringify(newTable);
+                break;
+             case 'doc':
+                // FIX: The 'Documentation' type does not have a 'name' property. 'title' should be used instead.
+                const newDoc: Documentation = { id: newId, title: name, description: 'A new document.', content: `<h2>${name}</h2><p>Start writing here...</p>` };
+                fileId = `library/docs/${newId}`;
+                fileContent = JSON.stringify(newDoc);
+                break;
+            default:
+                return;
+        }
+        await db.files.add({ id: fileId, content: fileContent });
+
+    } catch (e) {
+        console.error("Failed to add item", e);
+        alert("Error: Could not add item. Check console for details.");
+    }
+  };
+  
+  const sidebarContent = (
+    <>
+      <div className={`p-4 border-b border-border-primary flex-shrink-0 ${isMobile ? 'hidden' : ''}`}>
+        <div className="flex items-center space-x-2 mb-4">
+          <div className="w-10 h-10 bg-gradient-to-br from-primary-400 to-primary-600 rounded-xl flex items-center justify-center flex-shrink-0">
+            <span className="text-white font-bold text-lg">F</span>
+          </div>
+          <div className="min-w-0">
+            <div className="font-semibold text-lg truncate text-text-primary">Hospital Management</div>
+            <div className="text-xs text-text-tertiary">{features.length + pages.length + database.length} files</div>
+          </div>
+        </div>
+        <div className="flex space-x-2">
+          <button onClick={() => setMode('files')} className={`flex-1 px-4 py-2 rounded-lg text-sm font-medium transition hover:bg-primary-600 ${mode === 'files' ? 'bg-primary-500 text-white' : 'bg-bg-tertiary text-text-secondary'}`}>
+            📁 Files
+          </button>
+          <button onClick={() => setMode('library')} className={`flex-1 px-4 py-2 rounded-lg text-sm font-medium transition hover:bg-primary-600 ${mode === 'library' ? 'bg-primary-500 text-white' : 'bg-bg-tertiary text-text-secondary'}`}>
+            📚 Library
+          </button>
+        </div>
+      </div>
+
+      <div className="flex-1 overflow-y-auto scrollbar-thin p-3">
+        {mode === 'files' ? (
+          <>
+            <Section title="Features" count={features.length} onAdd={() => handleAddItem('feature')}>
+              {features.map(feature => (
+                <button key={feature.id} onClick={() => onSelectItem(feature, 'feature')}
+                  className={`w-full px-2 py-1.5 rounded text-left text-sm flex items-center space-x-2 border-l-2 transition-all duration-200 ${selectedItem?.id === feature.id && selectedType === 'feature' ? 'bg-primary-500/20 border-primary-500 text-text-primary' : 'border-transparent hover:bg-bg-tertiary/50'}`}>
+                  <div className={`${getStatusColor(feature.status)} w-2 h-2 rounded-full flex-shrink-0`}></div>
+                  <span className="flex-1 truncate">{feature.name}</span>
+                </button>
+              ))}
+            </Section>
+            <Section title="Pages" count={pages.length} onAdd={() => handleAddItem('page')}>
+              {pages.map(page => (
+                <button key={page.id} onClick={() => onSelectItem(page, 'page')}
+                  className={`w-full px-2 py-1.5 rounded text-left text-sm flex items-center space-x-2 border-l-2 transition-all duration-200 ${selectedItem?.id === page.id && selectedType === 'page' ? 'bg-blue-500/20 border-blue-500 text-text-primary' : 'border-transparent hover:bg-bg-tertiary/50'}`}>
+                  <span className="flex-shrink-0">📄</span>
+                  <span className="flex-1 truncate">{page.name}</span>
+                </button>
+              ))}
+            </Section>
+            <Section title="Database" count={database.length} onAdd={() => handleAddItem('database')}>
+              {database.map(table => (
+                <button key={table.id} onClick={() => onSelectItem(table, 'database')}
+                  className={`w-full px-2 py-1.5 rounded text-left text-sm flex items-center space-x-2 border-l-2 transition-all duration-200 ${selectedItem?.id === table.id && selectedType === 'database' ? 'bg-orange-500/20 border-orange-500 text-text-primary' : 'border-transparent hover:bg-bg-tertiary/50'}`}>
+                  <span className="flex-shrink-0">🗄️</span>
+                  <span className="flex-1 truncate">{table.name}</span>
+                </button>
+              ))}
+            </Section>
+             <div>
+                <button onClick={() => onSelectItem({id: 'design', name: 'Design System', type: 'design'}, 'design')}
+                  className={`w-full px-2 py-1.5 rounded text-left text-sm flex items-center space-x-2 border-l-2 transition-all duration-200 ${selectedType === 'design' ? 'bg-purple-500/20 border-purple-500 text-text-primary' : 'border-transparent hover:bg-bg-tertiary/50'}`}>
+                  <span>🎨</span>
+                  <span className="flex-1">Design System</span>
+                </button>
+              </div>
+          </>
+        ) : (
+          <div className="space-y-1">
+             <button onClick={() => onSelectLibraryItem('changelog')} className={`w-full px-3 py-2 rounded-lg text-left text-sm flex items-center space-x-3 border-l-2 transition-all ${selectedLibraryItem === 'changelog' ? 'bg-primary-500/20 border-primary-500 text-text-primary' : 'border-transparent hover:bg-bg-tertiary'}`}>
+                <span className="text-lg">📝</span>
+                <div className="flex-1 min-w-0"><div className="font-medium truncate">Changelog</div><div className="text-xs text-text-tertiary truncate">Project history timeline</div></div>
+             </button>
+             <button onClick={() => onSelectLibraryItem('vision')} className={`w-full px-3 py-2 rounded-lg text-left text-sm flex items-center space-x-3 border-l-2 transition-all ${selectedLibraryItem === 'vision' ? 'bg-purple-500/20 border-purple-500 text-text-primary' : 'border-transparent hover:bg-bg-tertiary'}`}>
+                <span className="text-lg">🔮</span>
+                <div className="flex-1 min-w-0"><div className="font-medium truncate">Vision & Goals</div><div className="text-xs text-text-tertiary truncate">Project purpose and objectives</div></div>
+             </button>
+             <Section title="Documentation" count={documentation.length} onAdd={() => handleAddItem('doc')}>
+                {documentation.map(doc => (
+                    <button key={doc.id} onClick={() => onSelectLibraryItem('doc', doc)}
+                        className={`w-full px-2 py-1.5 rounded text-left text-xs flex items-center space-x-2 border-l-2 transition-all ${selectedDoc?.id === doc.id ? 'bg-blue-500/20 border-blue-500 text-text-primary' : 'border-transparent hover:bg-bg-tertiary'}`}>
+                        <span>📄</span>
+                        <span className="flex-1 truncate">{doc.title}</span>
+                    </button>
+                ))}
+            </Section>
+            <button onClick={() => onSelectLibraryItem('roadmap')} className={`w-full px-3 py-2 rounded-lg text-left text-sm flex items-center space-x-3 border-l-2 mt-3 transition-all ${selectedLibraryItem === 'roadmap' ? 'bg-orange-500/20 border-orange-500 text-text-primary' : 'border-transparent hover:bg-bg-tertiary'}`}>
+                <span className="text-lg">🎯</span>
+                <div className="flex-1 min-w-0"><div className="font-medium truncate">Roadmap</div><div className="text-xs text-text-tertiary truncate">Future planning</div></div>
+            </button>
+            <button onClick={() => onSelectLibraryItem('architecture')} className={`w-full px-3 py-2 rounded-lg text-left text-sm flex items-center space-x-3 border-l-2 transition-all ${selectedLibraryItem === 'architecture' ? 'bg-indigo-500/20 border-indigo-500 text-text-primary' : 'border-transparent hover:bg-bg-tertiary'}`}>
+                <span className="text-lg">🏗️</span>
+                <div className="flex-1 min-w-0"><div className="font-medium truncate">Architecture</div><div className="text-xs text-text-tertiary truncate">System design overview</div></div>
+            </button>
+          </div>
+        )}
+      </div>
+
+      <div className={`border-t border-border-primary p-3 flex-shrink-0 ${isMobile ? 'hidden' : ''}`}>
+        <button onClick={onBuildProject} disabled={isBuilding} className="w-full bg-gradient-to-br from-primary-500 to-primary-600 text-white rounded-lg px-4 py-3 font-semibold flex items-center justify-center space-x-2 shadow-lg shadow-primary-500/20 hover:-translate-y-0.5 hover:shadow-xl hover:shadow-primary-500/30 transition-all disabled:opacity-50 disabled:cursor-wait">
+          {isBuilding ? (
+            <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+          ) : (
+            <BoltIcon className="w-5 h-5" />
+          )}
+          <span>{isBuilding ? 'Building...' : 'Build Project'}</span>
+        </button>
+      </div>
+    </>
+  );
+
+  return (
+    <div className={`flex flex-col ${isMobile ? 'h-full' : 'w-72 bg-bg-secondary/95 backdrop-blur-sm border-r border-border-primary'}`}>
+      {sidebarContent}
+    </div>
+  );
+};

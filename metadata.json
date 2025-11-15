@@ -1,0 +1,5 @@
+{
+  "name": "FlexOS Builder",
+  "description": "An AI-powered application builder that allows users to define project specifications, chat with an AI assistant to refine features, and view live previews. It includes a comprehensive library for project documentation, vision, and roadmap.",
+  "requestFramePermissions": []
+}

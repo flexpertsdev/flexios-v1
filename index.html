@@ -1,0 +1,113 @@
+
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>FlexOS Builder</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              'bg-primary': '#0F1419',
+              'bg-secondary': '#1A1F26',
+              'bg-tertiary': '#242B33',
+              'bg-quaternary': '#2D3440',
+              'text-primary': '#F7F9FA',
+              'text-secondary': '#D1D9E0',
+              'text-tertiary': '#8B949E',
+              'text-muted': '#6E7681',
+              'border-primary': '#303D',
+              'border-secondary': '#3A4046',
+              'primary': {
+                '300': '#34D399',
+                '400': '#34D399',
+                '500': '#16C181',
+                '600': '#10A574',
+              },
+              'blue': { '400': '#60a5fa', '500': '#3B82F6' },
+              'orange': { '500': '#F97316' },
+              'green': { '400': '#4ade80', '500': '#22C55E' },
+              'purple': { '400': '#a78bfa', '500': '#A855F7', '600': '#9333ea' },
+              'indigo': { '500': '#6366F1' },
+              'yellow': { '400': '#facc15', '500': '#FBBF24' },
+              'red': { '500': '#EF4444' },
+            }
+          }
+        }
+      }
+    </script>
+    <style>
+      :root {
+        --bg-primary: #0F1419;
+        --text-primary: #F7F9FA;
+      }
+      body {
+        background-color: var(--bg-primary);
+        color: var(--text-primary);
+        overscroll-behavior: none;
+      }
+      #root {
+        height: 100vh;
+        overflow: hidden;
+      }
+      /* Keyframes */
+      @keyframes float { 0%, 100% { transform: translate(0, 0) scale(1); } 25% { transform: translate(30px, -30px) scale(1.1); } 50% { transform: translate(-20px, 20px) scale(0.9); } 75% { transform: translate(20px, 30px) scale(1.05); } }
+      @keyframes flexi-idle { 0%, 100% { transform: translateY(0px); } 50% { transform: translateY(-5px); } }
+      @keyframes flexi-typing { 0%, 100% { transform: scale(1) rotate(0deg); } 50% { transform: scale(1.05) rotate(2deg); } }
+      @keyframes slideUp { from { transform: translateY(100%); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+      @keyframes slideDown { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
+      @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+      @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+      @keyframes typing-dots { 0%, 20% { opacity: 0.2; } 50% { opacity: 1; } 100% { opacity: 0.2; } }
+
+      /* Animation Classes */
+      .animate-slide-down { animation: slideDown 0.3s ease-out forwards; }
+      .animate-slide-up { animation: slideUp 0.3s ease-out forwards; }
+      .animate-fade-in { animation: fadeIn 0.3s ease-out forwards; }
+      .animate-pulse-slow { animation: pulse 2s ease-in-out infinite; }
+      .flexi-avatar { animation: flexi-idle 3s ease-in-out infinite; }
+      .flexi-avatar.typing { animation: flexi-typing 0.6s ease-in-out infinite; }
+      .typing-dots-animation span { animation: typing-dots 1.4s infinite; }
+      .typing-dots-animation span:nth-child(2) { animation-delay: 0.2s; }
+      .typing-dots-animation span:nth-child(3) { animation-delay: 0.4s; }
+
+      /* Gradient Orbs */
+      .gradient-orb { position: absolute; border-radius: 50%; filter: blur(100px); opacity: 0.2; animation: float 20s ease-in-out infinite; pointer-events: none; }
+      .orb-1 { top: 10%; left: 10%; width: 300px; height: 300px; background: radial-gradient(circle, #16C181 0%, transparent 70%); animation-delay: 0s; }
+      .orb-2 { top: 60%; right: 10%; width: 400px; height: 400px; background: radial-gradient(circle, #3B82F6 0%, transparent 70%); animation-delay: 7s; }
+      .orb-3 { bottom: 10%; left: 30%; width: 350px; height: 350px; background: radial-gradient(circle, #A855F7 0%, transparent 70%); animation-delay: 14s; }
+
+      /* Scrollbar */
+      .scrollbar-thin::-webkit-scrollbar { width: 6px; height: 6px; }
+      .scrollbar-thin::-webkit-scrollbar-track { background: transparent; }
+      .scrollbar-thin::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 3px; }
+
+      .prose {
+        color: var(--text-secondary);
+      }
+      .prose h1, .prose h2, .prose h3, .prose h4, .prose strong {
+        color: var(--text-primary);
+      }
+    </style>
+  <script type="importmap">
+{
+  "imports": {
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
+    "react/": "https://aistudiocdn.com/react@^19.2.0/",
+    "react": "https://aistudiocdn.com/react@^19.2.0",
+    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.29.1",
+    "dexie": "https://unpkg.com/dexie@4.0.7/dist/dexie.mjs",
+    "dexie-react-hooks": "https://unpkg.com/dexie-react-hooks@1.1.7/dist/dexie-react-hooks.mjs"
+  }
+}
+</script>
+</head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/index.tsx"></script>
+  </body>
+</html>
