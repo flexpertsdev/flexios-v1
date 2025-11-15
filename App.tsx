@@ -2,7 +2,7 @@
 import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from './db';
-import type { Mode, Message, SelectableItem, SelectedItemType, SelectedLibraryItemType, Documentation, VFile, Feature, Page, DatabaseTable, ChangelogEntry, RoadmapPhase } from './types';
+import type { Mode, Message, SelectableItem, SelectedItemType, SelectedLibraryItemType, Documentation, VFile, Feature, Page, DatabaseTable, ChangelogEntry, RoadmapPhase, DesignSystem } from './types';
 import * as seedData from './constants';
 import { getAiClient, getFlexiResponse, generateHtmlPreview } from './services/geminiService';
 import { createGitHubRepo, getRepoContents, pushToRepo } from './githubService';
@@ -18,17 +18,38 @@ import { GitHubSync } from './components/GitHubSync';
 async function seedDatabase() {
     console.log("Seeding database...");
     const filesToSeed: VFile[] = [];
+    const now = Date.now();
     
-    seedData.features.forEach(f => filesToSeed.push({ id: `features/${f.id}`, content: JSON.stringify(f) }));
-    seedData.pages.forEach(p => filesToSeed.push({ id: `pages/${p.id}`, content: JSON.stringify(p) }));
-    seedData.database.forEach(d => filesToSeed.push({ id: `database/${d.id}`, content: JSON.stringify(d) }));
-    seedData.documentation.forEach(d => filesToSeed.push({ id: `library/docs/${d.id}`, content: JSON.stringify(d) }));
+    // Use the 'flexos/' directory structure
+    seedData.features.forEach((f, i) => filesToSeed.push({ id: `flexos/specs/features/${f.id || (now + i)}.json`, content: JSON.stringify(f) }));
+    seedData.pages.forEach((p, i) => filesToSeed.push({ id: `flexos/specs/pages/${p.id || (now + i)}.json`, content: JSON.stringify(p) }));
+    seedData.database.forEach((d, i) => filesToSeed.push({ id: `flexos/specs/database/${d.id || (now + i)}.json`, content: JSON.stringify(d) }));
+    seedData.documentation.forEach((d, i) => filesToSeed.push({ id: `flexos/library/docs/${d.id || (now + i)}.json`, content: JSON.stringify(d) }));
     
-    filesToSeed.push({ id: 'library/changelog', content: JSON.stringify(seedData.changelog) });
-    filesToSeed.push({ id: 'library/roadmap', content: JSON.stringify(seedData.roadmap) });
-    filesToSeed.push({ id: 'library/vision', content: JSON.stringify(seedData.vision) });
-    filesToSeed.push({ id: 'library/architecture', content: JSON.stringify(seedData.architecture) });
-    filesToSeed.push({ id: 'design/system', content: JSON.stringify({id: 'design', name: 'Design System', type: 'design'})});
+    filesToSeed.push({ id: 'flexos/library/changelog.json', content: JSON.stringify(seedData.changelog) });
+    filesToSeed.push({ id: 'flexos/library/roadmap.json', content: JSON.stringify(seedData.roadmap) });
+    filesToSeed.push({ id: 'flexos/library/vision.json', content: JSON.stringify(seedData.vision) });
+    filesToSeed.push({ id: 'flexos/library/architecture.json', content: JSON.stringify(seedData.architecture) });
+    
+    // Add the design system spec
+    const design: DesignSystem = {
+        id: 'design', 
+        name: 'Design System', 
+        type: 'design',
+        theme: "Default Dark",
+        tokens: {
+            '--bg-primary': '#0F1419',
+            '--bg-secondary': '#1A1F26',
+            '--bg-tertiary': '#242B33',
+            '--bg-quaternary': '#2D3440',
+            '--text-primary': '#F7F9FA',
+            '--text-secondary': '#D1D9E0',
+            '--text-tertiary': '#8B949E',
+            '--primary-500': '#16C181',
+            '--primary-600': '#10A574',
+        }
+    };
+    filesToSeed.push({ id: 'flexos/specs/design.json', content: JSON.stringify(design)});
 
     await db.files.bulkPut(filesToSeed);
     console.log("Database seeded.");
@@ -86,45 +107,51 @@ export default function App() {
       }
   }, [syncedRepo]);
   
-  // --- Live Data from Dexie ---
+  // --- Live Data from Dexie (Updated with 'flexos/' paths) ---
   const features = useLiveQuery(() => 
-      db.files.where('id').startsWith('features/').toArray().then(files => 
+      db.files.where('id').startsWith('flexos/specs/features/').toArray().then(files => 
           files.map(f => JSON.parse(f.content) as Feature)), 
   []) || [];
   
   const pages = useLiveQuery(() => 
-      db.files.where('id').startsWith('pages/').toArray().then(files => 
+      db.files.where('id').startsWith('flexos/specs/pages/').toArray().then(files => 
           files.map(f => JSON.parse(f.content) as Page)), 
   []) || [];
 
   const database = useLiveQuery(() => 
-      db.files.where('id').startsWith('database/').toArray().then(files => 
+      db.files.where('id').startsWith('flexos/specs/database/').toArray().then(files => 
           files.map(f => JSON.parse(f.content) as DatabaseTable)), 
   []) || [];
 
   const documentation = useLiveQuery(() => 
-      db.files.where('id').startsWith('library/docs/').toArray().then(files => 
+      db.files.where('id').startsWith('flexos/library/docs/').toArray().then(files => 
           files.map(f => JSON.parse(f.content) as Documentation)), 
   []) || [];
 
   const changelog = useLiveQuery(async () => {
-      const file = await db.files.get('library/changelog');
+      const file = await db.files.get('flexos/library/changelog.json');
       return file ? JSON.parse(file.content) as ChangelogEntry[] : [];
   }, []) || [];
   
   const roadmap = useLiveQuery(async () => {
-      const file = await db.files.get('library/roadmap');
+      const file = await db.files.get('flexos/library/roadmap.json');
       return file ? JSON.parse(file.content) as RoadmapPhase[] : [];
   }, []) || [];
 
    const vision = useLiveQuery(async () => {
-      const file = await db.files.get('library/vision');
+      const file = await db.files.get('flexos/library/vision.json');
       return file ? JSON.parse(file.content) : null;
   }, []);
 
    const architecture = useLiveQuery(async () => {
-      const file = await db.files.get('library/architecture');
+      const file = await db.files.get('flexos/library/architecture.json');
       return file ? JSON.parse(file.content) : null;
+  }, []);
+  
+  // Get the design system for the AI preview
+   const designSystem = useLiveQuery(async () => {
+      const file = await db.files.get('flexos/specs/design.json');
+      return file ? JSON.parse(file.content) as DesignSystem : null;
   }, []);
 
 
@@ -186,10 +213,9 @@ export default function App() {
     setMessageInput(message);
     setTimeout(() => {
         if (aiClient && allFiles) {
-            // This is a bit repetitive, but ensures the state is captured correctly for the async call
             handleSendMessage();
         }
-    }, 100); // Small delay to allow state to update before sending
+    }, 100);
   };
   
   // --- GitHub Sync Handlers ---
@@ -320,7 +346,15 @@ export default function App() {
                         selectedItem={selectedItem}
                         onClearContext={() => { setSelectedItem(null); setSelectedType(null); }}
                     />
-                    <SpecPanel ai={aiClient} selectedItem={selectedItem} selectedType={selectedType} getFeatureName={getFeatureName} />
+                    <SpecPanel 
+                      ai={aiClient} 
+                      selectedItem={selectedItem} 
+                      selectedType={selectedType} 
+                      getFeatureName={getFeatureName}
+                      designSystem={designSystem}
+                      database={database}
+                      features={features}
+                    />
                 </>
             ) : (
                 <LibraryPanel 

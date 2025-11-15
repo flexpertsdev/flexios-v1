@@ -1,6 +1,6 @@
 
 import { GoogleGenAI } from "@google/genai";
-import type { SelectableItem, SelectedItemType, VFile, FlexiResponse } from '../types';
+import type { SelectableItem, SelectedItemType, VFile, FlexiResponse, Feature, Page, DatabaseTable, DesignSystem } from '../types';
 
 export function getAiClient(apiKey: string): GoogleGenAI | null {
     if (!apiKey) return null;
@@ -8,7 +8,7 @@ export function getAiClient(apiKey: string): GoogleGenAI | null {
 }
 
 export async function getFlexiResponse(ai: GoogleGenAI, prompt: string, dbFiles: VFile[]): Promise<FlexiResponse> {
-  const fileSummary = dbFiles.map(f => f.id).join('\n');
+  const fileSummary = dbFiles.map(f => f.id).join('\n'); // This will now include 'flexos/...' paths
 
   const systemInstruction = `You are Flexi, an AI co-founder and proactive software architect. Your user is a non-technical founder.
   Your goal is to help them build their application.
@@ -17,7 +17,7 @@ export async function getFlexiResponse(ai: GoogleGenAI, prompt: string, dbFiles:
   You MUST respond with a JSON object matching this TypeScript interface:
   
   interface VFile {
-    id: string; // path-like id, e.g., 'features/12345'
+    id: string; // FULL path-like id, e.g., 'flexos/specs/features/1678886400.json'
     content: string; // JSON stringified content
   }
   interface FlexiResponse {
@@ -30,35 +30,36 @@ export async function getFlexiResponse(ai: GoogleGenAI, prompt: string, dbFiles:
   
   HOW TO USE:
   1.  **chatResponse**: Always provide a friendly, helpful chat response.
-  2.  **fileOperations**: If the user asks you to create, update, or delete a file, you MUST add a 'fileOperations' array.
+  2.  **fileOperations**: If the user asks to create, update, or delete a file, you MUST add a 'fileOperations' array.
   
   RULES:
-  -   When creating a new file, generate a unique ID for it (e.g., \`features/\${Date.now()}\`).
-  -   The \`content\` in \`VFile\` MUST be a JSON-stringified object (e.g., a Feature, Page, etc.).
-  -   The user's current files are:
+  -   **File Paths**: All files MUST go in the 'flexos/' directory.
+  -   **Specs**: All specs go in 'flexos/specs/'.
+      -   Features: 'flexos/specs/features/[id].json'
+      -   Pages: 'flexos/specs/pages/[id].json'
+      -   Database: 'flexos/specs/database/[id].json'
+  -   **Library**: All library items go in 'flexos/library/'.
+      -   Docs: 'flexos/library/docs/[id].json'
+  -   **IDs**: When creating a new file, generate a unique ID for it (e.g., \`Date.now()\`).
+  -   **Content**: The \`content\` in \`VFile\` MUST be a JSON-stringified object (e.g., a Feature, Page, etc.).
+  -   **Editing**: To edit a file, use the 'write' action with an *existing* file \`id\`.
+  -   **Context**: The user's current project files are:
       ${fileSummary}
   
   EXAMPLE USER REQUEST: "Can you add a new feature for 'Billing'?"
   
   EXAMPLE **GOOD** JSON RESPONSE:
   {
-    "chatResponse": "You got it! I've added a new 'Billing' feature to our project. You should see it in the sidebar. What would you like to work on next?",
+    "chatResponse": "You got it! I've added a new 'Billing' feature to our project. You should see it in the sidebar.",
     "fileOperations": [
       {
         "action": "write",
         "file": {
-          "id": "features/${Date.now()}",
+          "id": "flexos/specs/features/${Date.now()}.json",
           "content": "{\\"id\\":${Date.now()},\\"name\\":\\"Billing\\",\\"status\\":\\"pending\\",\\"priority\\":\\"Medium\\",\\"complexity\\":\\"Medium\\",\\"description\\":\\"A new feature for managing billing and payments.\\",\\"requirements\\":[],\\"dependencies\\":[]}"
         }
       }
     ]
-  }
-  
-  EXAMPLE USER REQUEST: "Hi, how are you?"
-  
-  EXAMPLE **GOOD** JSON RESPONSE:
-  {
-    "chatResponse": "I'm doing great! Ready to build something amazing. What's on your mind?"
   }
   
   Now, respond to the user's prompt.
@@ -66,7 +67,7 @@ export async function getFlexiResponse(ai: GoogleGenAI, prompt: string, dbFiles:
 
   try {
     const response = await ai.models.generateContent({
-        model: 'gemini-2.5-pro', // Using 2.5 Pro for better JSON adherence
+        model: 'gemini-2.5-pro',
         contents: prompt,
         config: {
             systemInstruction: systemInstruction,
@@ -74,7 +75,6 @@ export async function getFlexiResponse(ai: GoogleGenAI, prompt: string, dbFiles:
         }
     });
 
-    // Parse the JSON response
     const jsonResponse = JSON.parse(response.text) as FlexiResponse;
     return jsonResponse;
 
@@ -86,27 +86,57 @@ export async function getFlexiResponse(ai: GoogleGenAI, prompt: string, dbFiles:
   }
 }
 
-export async function generateHtmlPreview(ai: GoogleGenAI, item: SelectableItem, type: SelectedItemType): Promise<string> {
+// --- THIS IS THE "SMART" PREVIEW FUNCTION ---
+// It now accepts the design system and database/feature data to create
+// the "Data Injector" and "Vibe Tuner" prototypes.
+
+export async function generateHtmlPreview(
+    ai: GoogleGenAI, 
+    item: SelectableItem, 
+    type: SelectedItemType,
+    design: DesignSystem | null,
+    db: DatabaseTable[],
+    features: Feature[]
+): Promise<string> {
+    
+    let relatedData: any = {};
+    if (type === 'page') {
+        const page = item as Page;
+        relatedData.features = page.features?.map(id => features.find(f => f.id === id) || null) || [];
+        relatedData.database = page.database?.map(id => db.find(d => d.id === id) || null) || [];
+    }
+
     const itemDetails = JSON.stringify(item, null, 2);
+    const designTokens = design ? JSON.stringify(design.tokens, null, 2) : "{}";
+    const relatedDataJson = JSON.stringify(relatedData, null, 2);
+
     const prompt = `
         You are an expert web developer. Your task is to generate a single, self-contained HTML file that creates a realistic, mobile-first preview of a component for a "Hospital Management System".
 
         **DO NOT** include any explanation, preamble, or markdown formatting (like \`\`\`html). Only output the raw HTML code.
 
         **Instructions:**
-        1.  **Framework:** Use Tailwind CSS for styling. You can assume it's available via CDN.
-        2.  **Styling:** Use a modern, clean, dark-theme aesthetic similar to the main application (dark backgrounds like #1A1F26, text colors like #F7F9FA, and a primary/accent color of emerald/green like #16C181). The preview should be visually appealing and well-structured.
-        3.  **Content:** The preview must be based on the following JSON specification. Use this data to inform the layout, text, and structure. Generate realistic placeholder data where needed (e.g., patient names, appointment times, chart data).
-        4.  **Self-Contained:** The final output must be a single HTML file. All CSS must be inside a \`<style>\` tag or as Tailwind classes. No external CSS files. No JavaScript is needed.
-        5.  **Structure:** Create a full HTML document structure (<!DOCTYPE html>, <html>, <head>, <body>). The <head> should include the Tailwind CSS CDN script: <script src="https://cdn.tailwindcss.com"></script>.
-
-        **JSON Specification for the component:**
-        Component Type: ${type}
-        Component Details:
-        \`\`\`json
-        ${itemDetails}
-        \`\`\`
-
+        1.  **Framework:** Use Tailwind CSS for styling.
+        2.  **Vibe Tuner (Styling):** You MUST inject the following CSS variables into a \`<style>:root { ... }\` block. Use these variables and Tailwind classes to create a modern, clean, dark-theme aesthetic.
+            \`\`\`json
+            ${designTokens}
+            \`\`\`
+        3.  **Data Injector (Content):** The preview MUST be based on the following JSON specifications.
+            -   **Main Component Spec:**
+                \`\`\`json
+                ${itemDetails}
+                \`\`\`
+            -   **Related Data (for Pages):**
+                \`\`\`json
+                ${relatedDataJson}
+                \`\`\`
+        4.  **Self-Contained:** The final output must be a single HTML file. All CSS must be inside a \`<style>\` tag or as Tailwind classes.
+        5.  **Structure:** Create a full HTML document (<!DOCTYPE html>, <html>, <head>, <body>).
+        6.  **Head:** The <head> MUST include:
+            -   \`<script src="https://cdn.tailwindcss.com"></script>\`
+            -   The \`<style>:root { ... }\` block with the design tokens.
+            -   A \`<style>\` block with \`body { background-color: var(--bg-primary); color: var(--text-primary); }\`
+        
         Now, generate the complete HTML file.
     `;
     

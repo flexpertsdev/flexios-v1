@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import type { GoogleGenAI } from '@google/genai';
-import type { SelectableItem, SelectedItemType, Feature, Page, DatabaseTable } from '../types';
+import type { SelectableItem, SelectedItemType, Feature, Page, DatabaseTable, DesignSystem } from '../types';
 import { generateHtmlPreview } from '../services/geminiService';
 import { CheckIcon, EditIcon, TrashIcon, SpecIcon } from './Icons';
 
@@ -10,6 +10,10 @@ interface SpecPanelProps {
   selectedType: SelectedItemType | null;
   getFeatureName: (id: number) => string;
   ai: GoogleGenAI | null;
+  // --- NEW PROPS FOR "SMART" PREVIEW ---
+  designSystem: DesignSystem | null;
+  database: DatabaseTable[];
+  features: Feature[];
 }
 
 const getStatusPill = (status: string) => {
@@ -96,11 +100,39 @@ const DatabaseSpec: React.FC<{ item: DatabaseTable }> = ({ item }) => (
                 <div className="p-2 bg-bg-primary rounded"><div className="font-mono text-xs text-purple-400">createdAt: datetime</div></div>
             </div>
         </SpecDetailCard>
+        {item.dummyData && (
+            <SpecDetailCard title="Mock Data">
+                <pre className="text-xs bg-bg-primary p-2 rounded overflow-x-auto scrollbar-thin">
+                    {JSON.stringify(item.dummyData, null, 2)}
+                </pre>
+            </SpecDetailCard>
+        )}
+    </div>
+);
+
+const DesignSpec: React.FC<{ item: DesignSystem }> = ({ item }) => (
+    <div className="space-y-4 animate-slide-up">
+        <SpecDetailCard title="Theme">
+            <p className="text-sm text-text-secondary">{item.theme || 'Default Dark'}</p>
+        </SpecDetailCard>
+        <SpecDetailCard title="Design Tokens">
+            <div className="space-y-2">
+                {item.tokens ? Object.entries(item.tokens).map(([key, value]) => (
+                    <div key={key} className="flex items-center justify-between text-sm p-2 bg-bg-primary rounded">
+                        <span className="font-mono text-xs text-blue-400">{key}</span>
+                        <div className="flex items-center space-x-2">
+                            <span className="font-mono text-xs text-text-secondary">{value}</span>
+                            <div className="w-4 h-4 rounded border border-border-secondary" style={{ backgroundColor: value }}></div>
+                        </div>
+                    </div>
+                )) : <p className="text-sm text-text-tertiary">No tokens defined.</p>}
+            </div>
+        </SpecDetailCard>
     </div>
 );
 
 
-export const SpecPanel: React.FC<SpecPanelProps> = ({ selectedItem, selectedType, getFeatureName, ai }) => {
+export const SpecPanel: React.FC<SpecPanelProps> = ({ selectedItem, selectedType, getFeatureName, ai, designSystem, database, features }) => {
   const [tab, setTab] = useState<'spec' | 'preview'>('spec');
   const [previewHtml, setPreviewHtml] = useState<string | null>(null);
   const [isPreviewLoading, setIsPreviewLoading] = useState(false);
@@ -117,7 +149,8 @@ export const SpecPanel: React.FC<SpecPanelProps> = ({ selectedItem, selectedType
 
     setIsPreviewLoading(true);
     try {
-        const html = await generateHtmlPreview(ai, selectedItem, selectedType);
+        // --- THIS IS THE NEW "SMART" CALL ---
+        const html = await generateHtmlPreview(ai, selectedItem, selectedType, designSystem, database, features);
         setPreviewHtml(html);
     } catch (error) {
         console.error(error);
@@ -154,17 +187,19 @@ export const SpecPanel: React.FC<SpecPanelProps> = ({ selectedItem, selectedType
             srcDoc={previewHtml || ''} 
             title="Preview" 
             className="w-full h-full bg-white rounded-lg shadow-lg border-none"
-            sandbox="allow-scripts"
+            sandbox="allow-scripts" // Allow scripts for potential interactivity in generated previews
           />
         </div>
       );
     }
     
+    // Render the spec content
     return (
         <div className="p-4">
             {selectedType === 'feature' && <FeatureSpec item={selectedItem as Feature} />}
             {selectedType === 'page' && <PageSpec item={selectedItem as Page} getFeatureName={getFeatureName} />}
             {selectedType === 'database' && <DatabaseSpec item={selectedItem as DatabaseTable} />}
+            {selectedType === 'design' && <DesignSpec item={selectedItem as DesignSystem} />}
         </div>
     );
   };

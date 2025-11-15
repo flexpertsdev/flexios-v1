@@ -21,21 +21,26 @@ export interface Feature {
 export interface Page {
   id: number;
   name: string;
-  features: number[];
-  database: number[];
+  features: number[]; // Array of feature IDs
+  database: number[]; // Array of database table IDs
   type?: string;
 }
 
 export interface DatabaseTable {
   id: number;
   name: string;
-  fields: string;
+  fields: string; // Simple string for now, e.g., "id, name, email"
+  // --- NEW "DATA INJECTOR" FIELD ---
+  dummyData?: any[]; 
 }
 
 export interface DesignSystem {
     id: 'design';
     name: 'Design System';
     type: 'design';
+    theme?: string;
+    // --- NEW "VIBE TUNER" FIELD ---
+    tokens?: { [key: string]: string };
 }
 
 export type SelectableItem = Feature | Page | DatabaseTable | DesignSystem;
@@ -44,7 +49,7 @@ export interface Documentation {
   id: number;
   title: string;
   description: string;
-  content: string;
+  content: string; // Can be markdown/HTML string
 }
 
 export interface Change {
@@ -77,15 +82,15 @@ export interface Message {
 
 // For Dexie virtual filesystem
 export interface VFile {
-  id: string; // path-like id, e.g., 'features/1'
+  id: string; // FULL path-like id, e.g., 'flexos/specs/features/12345.json'
   content: string; // JSON stringified content
 }
 
-// New type for structured AI responses
+// This is the structured response we will get from the AI
 export interface FlexiResponse {
-  chatResponse: string;
+  chatResponse: string; // The friendly, conversational reply
   fileOperations?: {
     action: 'write' | 'delete';
-    file: VFile;
+    file: VFile; // The file to be written (or deleted)
   }[];
 }
