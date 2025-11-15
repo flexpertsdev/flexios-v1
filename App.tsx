@@ -5,7 +5,7 @@ import { db } from './db';
 import type { Mode, Message, SelectableItem, SelectedItemType, SelectedLibraryItemType, Documentation, VFile, Feature, Page, DatabaseTable, ChangelogEntry, RoadmapPhase } from './types';
 import * as seedData from './constants';
 import { getAiClient, getFlexiResponse, generateHtmlPreview } from './services/geminiService';
-import { createGitHubRepo, createFilesInRepo } from './githubService';
+import { createGitHubRepo, getRepoContents, pushToRepo } from './githubService';
 import { Sidebar } from './components/Sidebar';
 import { ChatPanel } from './components/ChatPanel';
 import { SpecPanel } from './components/SpecPanel';
@@ -13,6 +13,7 @@ import { LibraryPanel } from './components/LibraryPanel';
 import { MobileHeader } from './components/MobileHeader';
 import { MobileSheet } from './components/MobileSheet';
 import { SetupModal } from './components/SetupModal';
+import { GitHubSync } from './components/GitHubSync';
 
 async function seedDatabase() {
     console.log("Seeding database...");
@@ -38,6 +39,11 @@ export default function App() {
   const [githubPat, setGithubPat] = useState(() => localStorage.getItem('githubPat'));
   const aiClient = useMemo(() => geminiApiKey ? getAiClient(geminiApiKey) : null, [geminiApiKey]);
 
+  const [syncedRepo, setSyncedRepo] = useState<{owner: string, repo: string} | null>(() => {
+    const saved = localStorage.getItem('syncedRepo');
+    return saved ? JSON.parse(saved) : null;
+  });
+  
   const [mode, setMode] = useState<Mode>('files');
   const [selectedItem, setSelectedItem] = useState<SelectableItem | null>(null);
   const [selectedType, setSelectedType] = useState<SelectedItemType | null>(null);
@@ -47,16 +53,19 @@ export default function App() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [messageInput, setMessageInput] = useState('');
   const [isFlexiTyping, setIsFlexiTyping] = useState(false);
-  const [isBuilding, setIsBuilding] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
 
   const [showSidebarSheet, setShowSidebarSheet] = useState(false);
   
   const chatPanelRef = useRef<HTMLDivElement>(null);
+  
+  const allFiles = useLiveQuery(() => db.files.toArray(), []);
 
   useEffect(() => {
     const checkDb = async () => {
       const count = await db.files.count();
-      if (count === 0) {
+      const isRepoSynced = !!localStorage.getItem('syncedRepo');
+      if (count === 0 && !isRepoSynced) {
         await seedDatabase();
       }
     };
@@ -68,28 +77,55 @@ export default function App() {
         chatPanelRef.current.scrollTop = chatPanelRef.current.scrollHeight;
     }
   }, [messages, isFlexiTyping]);
+
+  useEffect(() => {
+      if (syncedRepo) {
+          localStorage.setItem('syncedRepo', JSON.stringify(syncedRepo));
+      } else {
+          localStorage.removeItem('syncedRepo');
+      }
+  }, [syncedRepo]);
   
   // --- Live Data from Dexie ---
-  const features = useLiveQuery(() => db.files.where('id').startsWith('features/').toArray().then(files => files.map(f => JSON.parse(f.content) as Feature)), []) || [];
-  const pages = useLiveQuery(() => db.files.where('id').startsWith('pages/').toArray().then(files => files.map(f => JSON.parse(f.content) as Page)), []) || [];
-  const database = useLiveQuery(() => db.files.where('id').startsWith('database/').toArray().then(files => files.map(f => JSON.parse(f.content) as DatabaseTable)), []) || [];
-  const documentation = useLiveQuery(() => db.files.where('id').startsWith('library/docs/').toArray().then(files => files.map(f => JSON.parse(f.content) as Documentation)), []) || [];
+  const features = useLiveQuery(() => 
+      db.files.where('id').startsWith('features/').toArray().then(files => 
+          files.map(f => JSON.parse(f.content) as Feature)), 
+  []) || [];
+  
+  const pages = useLiveQuery(() => 
+      db.files.where('id').startsWith('pages/').toArray().then(files => 
+          files.map(f => JSON.parse(f.content) as Page)), 
+  []) || [];
+
+  const database = useLiveQuery(() => 
+      db.files.where('id').startsWith('database/').toArray().then(files => 
+          files.map(f => JSON.parse(f.content) as DatabaseTable)), 
+  []) || [];
+
+  const documentation = useLiveQuery(() => 
+      db.files.where('id').startsWith('library/docs/').toArray().then(files => 
+          files.map(f => JSON.parse(f.content) as Documentation)), 
+  []) || [];
+
   const changelog = useLiveQuery(async () => {
       const file = await db.files.get('library/changelog');
       return file ? JSON.parse(file.content) as ChangelogEntry[] : [];
   }, []) || [];
+  
   const roadmap = useLiveQuery(async () => {
       const file = await db.files.get('library/roadmap');
       return file ? JSON.parse(file.content) as RoadmapPhase[] : [];
   }, []) || [];
+
    const vision = useLiveQuery(async () => {
       const file = await db.files.get('library/vision');
       return file ? JSON.parse(file.content) : null;
-  }, null);
+  }, []);
+
    const architecture = useLiveQuery(async () => {
       const file = await db.files.get('library/architecture');
       return file ? JSON.parse(file.content) : null;
-  }, null);
+  }, []);
 
 
   const handleSaveKeys = (geminiKey: string, githubToken: string) => {
@@ -100,7 +136,7 @@ export default function App() {
   };
 
   const handleSendMessage = useCallback(async () => {
-    if (!messageInput.trim() || !aiClient) return;
+    if (!messageInput.trim() || !aiClient || !allFiles) return;
 
     const userMessage: Message = { role: 'user', content: messageInput };
     setMessages(prev => [...prev, userMessage]);
@@ -108,17 +144,29 @@ export default function App() {
     setIsFlexiTyping(true);
 
     try {
-        const response = await getFlexiResponse(aiClient, userMessage.content);
-        const assistantMessage: Message = { role: 'assistant', content: response };
+        const aiResponse = await getFlexiResponse(aiClient, userMessage.content, allFiles);
+        
+        const assistantMessage: Message = { role: 'assistant', content: aiResponse.chatResponse };
         setMessages(prev => [...prev, assistantMessage]);
+
+        if (aiResponse.fileOperations && aiResponse.fileOperations.length > 0) {
+            for (const op of aiResponse.fileOperations) {
+                if (op.action === 'write') {
+                    await db.files.put(op.file);
+                } else if (op.action === 'delete') {
+                    await db.files.delete(op.file.id);
+                }
+            }
+        }
+
     } catch (error) {
         console.error(error);
-        const errorMessage: Message = { role: 'assistant', content: "I'm sorry, something went wrong." };
+        const errorMessage: Message = { role: 'assistant', content: "I'm sorry, something went wrong. I couldn't process that request." };
         setMessages(prev => [...prev, errorMessage]);
     } finally {
         setIsFlexiTyping(false);
     }
-  }, [messageInput, aiClient]);
+  }, [messageInput, aiClient, allFiles]);
   
   const handleSelectItem = useCallback((item: SelectableItem, type: SelectedItemType) => {
       setSelectedItem(item);
@@ -137,60 +185,80 @@ export default function App() {
   const handleQuickStart = (message: string) => {
     setMessageInput(message);
     setTimeout(() => {
-        if (aiClient) {
-            const sendMessageWithPrompt = async () => {
-                const userMessage: Message = { role: 'user', content: message };
-                setMessages(prev => [...prev, userMessage]);
-                setMessageInput('');
-                setIsFlexiTyping(true);
-                try {
-                const response = await getFlexiResponse(aiClient, message);
-                const assistantMessage: Message = { role: 'assistant', content: response };
-                setMessages(prev => [...prev, assistantMessage]);
-                } catch (error) {
-                console.error(error);
-                const errorMessage: Message = { role: 'assistant', content: "I'm sorry, something went wrong." };
-                setMessages(prev => [...prev, errorMessage]);
-                } finally {
-                setIsFlexiTyping(false);
-                }
-            };
-            sendMessageWithPrompt();
+        if (aiClient && allFiles) {
+            // This is a bit repetitive, but ensures the state is captured correctly for the async call
+            handleSendMessage();
         }
-    }, 0);
+    }, 100); // Small delay to allow state to update before sending
   };
-
-  const handleBuildProject = useCallback(async () => {
+  
+  // --- GitHub Sync Handlers ---
+  const handleCloneRepo = useCallback(async (repoUrl: string) => {
     if (!githubPat) {
-        alert("GitHub Personal Access Token is not set.");
+        alert("GitHub PAT not set.");
         return;
     }
-    const projectName = prompt("Enter a name for your new GitHub repository (e.g., hospital-management-specs):");
-    if (!projectName || !projectName.trim()) return;
-    
-    setIsBuilding(true);
-    try {
-        const repoData = await createGitHubRepo(githubPat, projectName.trim());
-        const owner = repoData.owner.login;
-
-        const allFiles = await db.files.toArray();
-        const repoFiles = allFiles.map(file => {
-            const path = `${file.id.replace(/\//g, '-')}.json`; // Simple flattening
-            return { path, content: file.content };
-        });
-
-        await createFilesInRepo(githubPat, owner, projectName.trim(), repoFiles, "Initial commit from FlexOS Builder");
-        
-        alert(`Successfully created and populated repository!\n\nYou can view it at: ${repoData.html_url}`);
-
-    } catch (error) {
-        const message = error instanceof Error ? error.message : "An unknown error occurred.";
-        console.error("Failed to build project:", error);
-        alert(`Error: ${message}`);
-    } finally {
-        setIsBuilding(false);
+    const match = repoUrl.match(/github\.com\/([^/]+)\/([^/]+)/);
+    if (!match) {
+        alert("Invalid GitHub URL format. Use https://github.com/owner/repo");
+        return;
     }
-}, [githubPat]);
+    const [, owner, repo] = match;
+    setIsSyncing(true);
+    try {
+        const files = await getRepoContents(githubPat, owner, repo.replace('.git', ''));
+        await db.files.clear();
+        if (files.length > 0) {
+            await db.files.bulkPut(files);
+        }
+        setSyncedRepo({ owner, repo });
+        alert(`Successfully cloned ${owner}/${repo} and updated local state.`);
+    } catch (e) {
+        const message = e instanceof Error ? e.message : "An unknown error occurred.";
+        alert(`Error cloning repository: ${message}`);
+    } finally {
+        setIsSyncing(false);
+    }
+  }, [githubPat]);
+
+  const handleCreateAndSyncRepo = useCallback(async (repoName: string) => {
+      if (!githubPat || !allFiles) return;
+      setIsSyncing(true);
+      try {
+          const repoData = await createGitHubRepo(githubPat, repoName);
+          const { owner: { login: owner } } = repoData;
+          await pushToRepo(githubPat, owner, repoName, allFiles, "Initial commit from FlexOS Builder");
+          setSyncedRepo({ owner, repo: repoName });
+          alert(`Successfully created and synced ${owner}/${repoName}.`);
+      } catch(e) {
+          const message = e instanceof Error ? e.message : "An unknown error occurred.";
+          alert(`Error creating repository: ${message}`);
+      } finally {
+          setIsSyncing(false);
+      }
+  }, [githubPat, allFiles]);
+
+  const handlePushToRepo = useCallback(async () => {
+    if (!githubPat || !syncedRepo || !allFiles) {
+        alert("Not connected to a repository or missing PAT.");
+        return;
+    }
+    setIsSyncing(true);
+    try {
+        const commitMessage = prompt("Enter a commit message:", `Update specs from FlexOS ${new Date().toISOString()}`);
+        if (!commitMessage) {
+            setIsSyncing(false);
+            return;
+        }
+        await pushToRepo(githubPat, syncedRepo.owner, syncedRepo.repo, allFiles, commitMessage);
+        alert("Successfully pushed changes to GitHub.");
+    } catch(e) {
+        const message = e instanceof Error ? e.message : "An unknown error occurred.";
+        alert(`Error pushing to repository: ${message}`);
+    } finally {
+        setIsSyncing(false);
+    }
+  }, [githubPat, syncedRepo, allFiles]);
 
 
   if (!geminiApiKey || !githubPat) {
@@ -209,8 +277,9 @@ export default function App() {
         mode={mode} 
         setMode={setMode} 
         onMenuClick={() => setShowSidebarSheet(true)}
-        onBuildProject={handleBuildProject}
-        isBuilding={isBuilding}
+        onBuildClick={handlePushToRepo}
+        isBuilding={isSyncing}
+        isRepoConnected={!!syncedRepo}
       />
 
       <div className="hidden md:flex flex-1 overflow-hidden relative z-10">
@@ -227,9 +296,15 @@ export default function App() {
           pages={pages}
           database={database}
           documentation={documentation}
-          onBuildProject={handleBuildProject}
-          isBuilding={isBuilding}
-        />
+        >
+            <GitHubSync 
+                syncedRepo={syncedRepo}
+                onClone={handleCloneRepo}
+                onCreate={handleCreateAndSyncRepo}
+                onPush={handlePushToRepo}
+                isSyncing={isSyncing}
+            />
+        </Sidebar>
 
         <main className="flex-1 flex overflow-hidden">
             {mode === 'files' ? (
@@ -301,9 +376,15 @@ export default function App() {
             pages={pages}
             database={database}
             documentation={documentation}
-            onBuildProject={handleBuildProject}
-            isBuilding={isBuilding}
-        />
+        >
+             <GitHubSync 
+                syncedRepo={syncedRepo}
+                onClone={handleCloneRepo}
+                onCreate={handleCreateAndSyncRepo}
+                onPush={handlePushToRepo}
+                isSyncing={isSyncing}
+            />
+        </Sidebar>
       </MobileSheet>
     </div>
   );

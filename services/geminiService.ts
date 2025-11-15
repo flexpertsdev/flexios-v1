@@ -1,28 +1,88 @@
 
 import { GoogleGenAI } from "@google/genai";
-import type { SelectableItem, SelectedItemType } from '../types';
+import type { SelectableItem, SelectedItemType, VFile, FlexiResponse } from '../types';
 
 export function getAiClient(apiKey: string): GoogleGenAI | null {
     if (!apiKey) return null;
     return new GoogleGenAI({ apiKey });
 }
 
-export async function getFlexiResponse(ai: GoogleGenAI, prompt: string): Promise<string> {
+export async function getFlexiResponse(ai: GoogleGenAI, prompt: string, dbFiles: VFile[]): Promise<FlexiResponse> {
+  const fileSummary = dbFiles.map(f => f.id).join('\n');
+
+  const systemInstruction = `You are Flexi, an AI co-founder and proactive software architect. Your user is a non-technical founder.
+  Your goal is to help them build their application.
+  
+  YOUR MOST IMPORTANT TASK is to respond in a specific JSON format.
+  You MUST respond with a JSON object matching this TypeScript interface:
+  
+  interface VFile {
+    id: string; // path-like id, e.g., 'features/12345'
+    content: string; // JSON stringified content
+  }
+  interface FlexiResponse {
+    chatResponse: string; // Your friendly, conversational reply to the user (can include markdown).
+    fileOperations?: {
+      action: 'write' | 'delete';
+      file: VFile;
+    }[];
+  }
+  
+  HOW TO USE:
+  1.  **chatResponse**: Always provide a friendly, helpful chat response.
+  2.  **fileOperations**: If the user asks you to create, update, or delete a file, you MUST add a 'fileOperations' array.
+  
+  RULES:
+  -   When creating a new file, generate a unique ID for it (e.g., \`features/\${Date.now()}\`).
+  -   The \`content\` in \`VFile\` MUST be a JSON-stringified object (e.g., a Feature, Page, etc.).
+  -   The user's current files are:
+      ${fileSummary}
+  
+  EXAMPLE USER REQUEST: "Can you add a new feature for 'Billing'?"
+  
+  EXAMPLE **GOOD** JSON RESPONSE:
+  {
+    "chatResponse": "You got it! I've added a new 'Billing' feature to our project. You should see it in the sidebar. What would you like to work on next?",
+    "fileOperations": [
+      {
+        "action": "write",
+        "file": {
+          "id": "features/${Date.now()}",
+          "content": "{\\"id\\":${Date.now()},\\"name\\":\\"Billing\\",\\"status\\":\\"pending\\",\\"priority\\":\\"Medium\\",\\"complexity\\":\\"Medium\\",\\"description\\":\\"A new feature for managing billing and payments.\\",\\"requirements\\":[],\\"dependencies\\":[]}"
+        }
+      }
+    ]
+  }
+  
+  EXAMPLE USER REQUEST: "Hi, how are you?"
+  
+  EXAMPLE **GOOD** JSON RESPONSE:
+  {
+    "chatResponse": "I'm doing great! Ready to build something amazing. What's on your mind?"
+  }
+  
+  Now, respond to the user's prompt.
+  `;
+
   try {
-    const systemInstruction = "You are Flexi, an AI co-founder and proactive software architect. Your user is a non-technical founder. You are friendly, enthusiastic, and helpful. Your goal is to help them build their application by defining features, pages, and other specifications. Keep your responses concise and helpful, using markdown for formatting if needed.";
-    
     const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
+        model: 'gemini-2.5-pro', // Using 2.5 Pro for better JSON adherence
         contents: prompt,
         config: {
             systemInstruction: systemInstruction,
+            responseMimeType: "application/json",
         }
     });
 
-    return response.text;
+    // Parse the JSON response
+    const jsonResponse = JSON.parse(response.text) as FlexiResponse;
+    return jsonResponse;
+
   } catch (error) {
     console.error("Error calling Gemini API:", error);
-    return "Sorry, I'm having trouble connecting to my brain right now. Please check your API key and network connection, then try again.";
+    return {
+        chatResponse: "Sorry, I'm having trouble connecting to my brain right now. Please check your API key and network connection, then try again."
+    };
   }
 }
 
@@ -52,12 +112,11 @@ export async function generateHtmlPreview(ai: GoogleGenAI, item: SelectableItem,
     
     try {
         const response = await ai.models.generateContent({
-            model: 'gemini-2.5-pro', // Use a more powerful model for better HTML generation
+            model: 'gemini-2.5-pro',
             contents: prompt,
         });
 
         let html = response.text;
-        // Clean up the response to ensure it's just HTML
         if (html.startsWith('```html')) {
             html = html.substring(7);
         }

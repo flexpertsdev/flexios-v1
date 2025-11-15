@@ -46,9 +46,9 @@ const FeatureSpec: React.FC<{ item: Feature }> = ({ item }) => (
             </div>
         </div>
         <SpecDetailCard title="Description"><p className="text-sm text-text-secondary">{item.description}</p></SpecDetailCard>
-        <SpecDetailCard title={`Requirements (${item.requirements.length})`}>
+        <SpecDetailCard title={`Requirements (${item.requirements?.length || 0})`}>
             <div className="space-y-2">
-                {item.requirements.map((req, i) => (
+                {item.requirements?.map((req, i) => (
                     <div key={i} className="flex items-start space-x-2 text-sm">
                         <CheckIcon className="text-primary-400 mt-0.5 w-4 h-4 flex-shrink-0" />
                         <span className="text-text-secondary">{req}</span>
@@ -56,9 +56,9 @@ const FeatureSpec: React.FC<{ item: Feature }> = ({ item }) => (
                 ))}
             </div>
         </SpecDetailCard>
-        <SpecDetailCard title={`Dependencies (${item.dependencies.length})`}>
+        <SpecDetailCard title={`Dependencies (${item.dependencies?.length || 0})`}>
              <div className="space-y-2">
-                {item.dependencies.map((dep, i) => (
+                {item.dependencies?.map((dep, i) => (
                     <div key={i} className="flex items-center space-x-2 text-sm p-2 bg-bg-primary rounded">
                         <span className="text-primary-400">→</span>
                         <span className="text-text-secondary">{dep}</span>
@@ -72,9 +72,9 @@ const FeatureSpec: React.FC<{ item: Feature }> = ({ item }) => (
 const PageSpec: React.FC<{ item: Page, getFeatureName: (id: number) => string }> = ({ item, getFeatureName }) => (
     <div className="space-y-4 animate-slide-up">
         <SpecDetailCard title="Page Type"><p className="text-sm text-text-secondary">{item.type || 'Standard Page'}</p></SpecDetailCard>
-        <SpecDetailCard title={`Features Used (${item.features.length})`}>
+        <SpecDetailCard title={`Features Used (${item.features?.length || 0})`}>
             <div className="space-y-2">
-                {item.features.map(featureId => (
+                {item.features?.map(featureId => (
                     <button key={featureId} className="w-full flex items-center justify-between px-3 py-2 rounded-lg bg-bg-primary hover:bg-bg-quaternary text-sm transition-all hover:translate-x-1">
                         <div className="flex items-center gap-2">
                             <div className="w-2 h-2 bg-primary-500 rounded-full"></div>

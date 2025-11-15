@@ -80,3 +80,12 @@ export interface VFile {
   id: string; // path-like id, e.g., 'features/1'
   content: string; // JSON stringified content
 }
+
+// New type for structured AI responses
+export interface FlexiResponse {
+  chatResponse: string;
+  fileOperations?: {
+    action: 'write' | 'delete';
+    file: VFile;
+  }[];
+}

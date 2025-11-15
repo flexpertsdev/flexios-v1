@@ -1,10 +1,10 @@
 
 import React, { useState } from 'react';
 import type { Mode, SelectableItem, SelectedItemType, SelectedLibraryItemType, Documentation, Feature, Page, DatabaseTable } from '../types';
-import { db } from '../db';
-import { ChevronRightIcon, PlusIcon, BoltIcon } from './Icons';
+import { ChevronRightIcon } from './Icons';
 
 interface SidebarProps {
+  children?: React.ReactNode;
   isMobile?: boolean;
   mode: Mode;
   setMode: (mode: Mode) => void;
@@ -18,8 +18,6 @@ interface SidebarProps {
   pages: Page[];
   database: DatabaseTable[];
   documentation: Documentation[];
-  onBuildProject: () => void;
-  isBuilding: boolean;
 }
 
 const getStatusColor = (status: string) => {
@@ -27,7 +25,7 @@ const getStatusColor = (status: string) => {
     return colors[status] || 'bg-gray-500';
 };
 
-const Section: React.FC<{title: string; count: number; onAdd: () => void; children: React.ReactNode;}> = ({ title, count, onAdd, children }) => {
+const Section: React.FC<{title: string; count: number; children: React.ReactNode;}> = ({ title, count, children }) => {
     const [isExpanded, setIsExpanded] = useState(true);
     
     return (
@@ -40,58 +38,13 @@ const Section: React.FC<{title: string; count: number; onAdd: () => void; childr
                     <span className="text-xs font-semibold text-text-tertiary uppercase tracking-wider">{title}</span>
                     <span className="text-xs text-text-muted">({count})</span>
                 </div>
-                <button onClick={onAdd} className="text-primary-400 hover:text-primary-300 transition-colors duration-200">
-                    <PlusIcon className="w-4 h-4" />
-                </button>
             </div>
             {isExpanded && <div className="space-y-0.5 animate-slide-down ml-6">{children}</div>}
         </div>
     );
 };
 
-export const Sidebar: React.FC<SidebarProps> = ({ isMobile = false, mode, setMode, selectedItem, selectedType, onSelectItem, selectedLibraryItem, selectedDoc, onSelectLibraryItem, features, pages, database, documentation, onBuildProject, isBuilding }) => {
-  
-  const handleAddItem = async (type: 'feature' | 'page' | 'database' | 'doc') => {
-    const name = prompt(`Enter a name for the new ${type}:`);
-    if (!name || !name.trim()) return;
-
-    try {
-        const newId = Date.now();
-        let fileId: string;
-        let fileContent: string;
-
-        switch(type) {
-            case 'feature':
-                const newFeature: Feature = { id: newId, name, status: 'pending', priority: 'Medium', complexity: 'Medium', description: 'A new feature.', requirements: [], dependencies: [] };
-                fileId = `features/${newId}`;
-                fileContent = JSON.stringify(newFeature);
-                break;
-            case 'page':
-                const newPage: Page = { id: newId, name, features: [], database: [] };
-                fileId = `pages/${newId}`;
-                fileContent = JSON.stringify(newPage);
-                break;
-            case 'database':
-                const newTable: DatabaseTable = { id: newId, name, fields: '0' };
-                fileId = `database/${newId}`;
-                fileContent = JSON.stringify(newTable);
-                break;
-             case 'doc':
-                // FIX: The 'Documentation' type does not have a 'name' property. 'title' should be used instead.
-                const newDoc: Documentation = { id: newId, title: name, description: 'A new document.', content: `<h2>${name}</h2><p>Start writing here...</p>` };
-                fileId = `library/docs/${newId}`;
-                fileContent = JSON.stringify(newDoc);
-                break;
-            default:
-                return;
-        }
-        await db.files.add({ id: fileId, content: fileContent });
-
-    } catch (e) {
-        console.error("Failed to add item", e);
-        alert("Error: Could not add item. Check console for details.");
-    }
-  };
+export const Sidebar: React.FC<SidebarProps> = ({ isMobile = false, mode, setMode, selectedItem, selectedType, onSelectItem, selectedLibraryItem, selectedDoc, onSelectLibraryItem, features, pages, database, documentation, children }) => {
   
   const sidebarContent = (
     <>
@@ -118,7 +71,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobile = false, mode, setMod
       <div className="flex-1 overflow-y-auto scrollbar-thin p-3">
         {mode === 'files' ? (
           <>
-            <Section title="Features" count={features.length} onAdd={() => handleAddItem('feature')}>
+            <Section title="Features" count={features.length}>
               {features.map(feature => (
                 <button key={feature.id} onClick={() => onSelectItem(feature, 'feature')}
                   className={`w-full px-2 py-1.5 rounded text-left text-sm flex items-center space-x-2 border-l-2 transition-all duration-200 ${selectedItem?.id === feature.id && selectedType === 'feature' ? 'bg-primary-500/20 border-primary-500 text-text-primary' : 'border-transparent hover:bg-bg-tertiary/50'}`}>
@@ -127,7 +80,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobile = false, mode, setMod
                 </button>
               ))}
             </Section>
-            <Section title="Pages" count={pages.length} onAdd={() => handleAddItem('page')}>
+            <Section title="Pages" count={pages.length}>
               {pages.map(page => (
                 <button key={page.id} onClick={() => onSelectItem(page, 'page')}
                   className={`w-full px-2 py-1.5 rounded text-left text-sm flex items-center space-x-2 border-l-2 transition-all duration-200 ${selectedItem?.id === page.id && selectedType === 'page' ? 'bg-blue-500/20 border-blue-500 text-text-primary' : 'border-transparent hover:bg-bg-tertiary/50'}`}>
@@ -136,7 +89,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobile = false, mode, setMod
                 </button>
               ))}
             </Section>
-            <Section title="Database" count={database.length} onAdd={() => handleAddItem('database')}>
+            <Section title="Database" count={database.length}>
               {database.map(table => (
                 <button key={table.id} onClick={() => onSelectItem(table, 'database')}
                   className={`w-full px-2 py-1.5 rounded text-left text-sm flex items-center space-x-2 border-l-2 transition-all duration-200 ${selectedItem?.id === table.id && selectedType === 'database' ? 'bg-orange-500/20 border-orange-500 text-text-primary' : 'border-transparent hover:bg-bg-tertiary/50'}`}>
@@ -163,7 +116,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobile = false, mode, setMod
                 <span className="text-lg">🔮</span>
                 <div className="flex-1 min-w-0"><div className="font-medium truncate">Vision & Goals</div><div className="text-xs text-text-tertiary truncate">Project purpose and objectives</div></div>
              </button>
-             <Section title="Documentation" count={documentation.length} onAdd={() => handleAddItem('doc')}>
+             <Section title="Documentation" count={documentation.length}>
                 {documentation.map(doc => (
                     <button key={doc.id} onClick={() => onSelectLibraryItem('doc', doc)}
                         className={`w-full px-2 py-1.5 rounded text-left text-xs flex items-center space-x-2 border-l-2 transition-all ${selectedDoc?.id === doc.id ? 'bg-blue-500/20 border-blue-500 text-text-primary' : 'border-transparent hover:bg-bg-tertiary'}`}>
@@ -184,15 +137,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobile = false, mode, setMod
         )}
       </div>
 
-      <div className={`border-t border-border-primary p-3 flex-shrink-0 ${isMobile ? 'hidden' : ''}`}>
-        <button onClick={onBuildProject} disabled={isBuilding} className="w-full bg-gradient-to-br from-primary-500 to-primary-600 text-white rounded-lg px-4 py-3 font-semibold flex items-center justify-center space-x-2 shadow-lg shadow-primary-500/20 hover:-translate-y-0.5 hover:shadow-xl hover:shadow-primary-500/30 transition-all disabled:opacity-50 disabled:cursor-wait">
-          {isBuilding ? (
-            <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-          ) : (
-            <BoltIcon className="w-5 h-5" />
-          )}
-          <span>{isBuilding ? 'Building...' : 'Build Project'}</span>
-        </button>
+      <div className="border-t border-border-primary p-3 flex-shrink-0">
+        {children}
       </div>
     </>
   );

@@ -7,11 +7,12 @@ interface MobileHeaderProps {
   mode: Mode;
   setMode: (mode: Mode) => void;
   onMenuClick: () => void;
-  onBuildProject: () => void;
+  onBuildClick: () => void;
   isBuilding: boolean;
+  isRepoConnected: boolean;
 }
 
-export const MobileHeader: React.FC<MobileHeaderProps> = ({ mode, setMode, onMenuClick, onBuildProject, isBuilding }) => (
+export const MobileHeader: React.FC<MobileHeaderProps> = ({ mode, setMode, onMenuClick, onBuildClick, isBuilding, isRepoConnected }) => (
   <div className="md:hidden bg-bg-secondary border-b border-border-primary flex-shrink-0 relative z-10">
     <div className="px-4 py-3 flex items-center justify-between">
       <button onClick={onMenuClick} className="p-2 -ml-2 hover:bg-bg-tertiary rounded-lg transition">
@@ -27,8 +28,12 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({ mode, setMode, onMen
           </div>
         </div>
       </div>
-      <button onClick={onBuildProject} disabled={isBuilding} className="px-3 py-1.5 bg-primary-500 hover:bg-primary-600 rounded-lg text-xs font-semibold text-white transition disabled:opacity-50 disabled:cursor-wait">
-        {isBuilding ? 'Building...' : 'Build'}
+      <button 
+        onClick={onBuildClick} 
+        disabled={isBuilding || !isRepoConnected} 
+        className="px-3 py-1.5 bg-primary-500 hover:bg-primary-600 rounded-lg text-xs font-semibold text-white transition disabled:opacity-50 disabled:cursor-not-allowed"
+      >
+        {isBuilding ? 'Syncing...' : 'Sync'}
       </button>
     </div>
 
